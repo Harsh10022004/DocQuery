@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-10-08 11:07:07",
+  "total_cases": 35,
+  "avg_faithfulness": 0.9,
+  "avg_relevance": 0.986,
+  "avg_latency_seconds": 0.42,
+  "total_evaluation_cost_usd": 0.003233,
+  "target_threshold_met": true
+}

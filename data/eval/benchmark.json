@@ -1,0 +1,247 @@
+[
+  {
+    "id": "fastapi_01",
+    "domain": "fastapi",
+    "question": "How do you define path parameters in FastAPI?",
+    "ground_truth": "Use Python format string syntax in the path decorator, e.g., @app.get('/items/{item_id}') and declare the parameter in the function signature with a type hint.",
+    "category": "syntax"
+  },
+  {
+    "id": "fastapi_02",
+    "domain": "fastapi",
+    "question": "What flag is used with uvicorn to enable auto-reload during development?",
+    "ground_truth": "The --reload flag, run as uvicorn main:app --reload.",
+    "category": "syntax"
+  },
+  {
+    "id": "fastapi_03",
+    "domain": "fastapi",
+    "question": "How does FastAPI differentiate between query parameters and path parameters?",
+    "ground_truth": "Function parameters that are not part of the path template are automatically treated as query parameters.",
+    "category": "concept"
+  },
+  {
+    "id": "fastapi_04",
+    "domain": "fastapi",
+    "question": "What library does FastAPI use for request body declaration and data validation?",
+    "ground_truth": "FastAPI uses Pydantic models (BaseModel) for declaring request bodies and validating data.",
+    "category": "concept"
+  },
+  {
+    "id": "fastapi_05",
+    "domain": "fastapi",
+    "question": "How do you declare dependency injection in a FastAPI route?",
+    "ground_truth": "Using Depends from fastapi, for example: commons: dict = Depends(common_parameters).",
+    "category": "syntax"
+  },
+  {
+    "id": "fastapi_06",
+    "domain": "fastapi",
+    "question": "How do you run operations after returning a response in FastAPI?",
+    "ground_truth": "Use BackgroundTasks from fastapi and call background_tasks.add_task(task_function, args).",
+    "category": "concept"
+  },
+  {
+    "id": "fastapi_07",
+    "domain": "fastapi",
+    "question": "How do you return an HTTP error response in FastAPI?",
+    "ground_truth": "Raise HTTPException from fastapi with status_code and detail arguments.",
+    "category": "syntax"
+  },
+  {
+    "id": "fastapi_08",
+    "domain": "fastapi",
+    "question": "Can query parameters have default values in FastAPI?",
+    "ground_truth": "Yes, declare default values in function arguments, like skip: int = 0, limit: int = 10.",
+    "category": "syntax"
+  },
+  {
+    "id": "fastapi_09",
+    "domain": "fastapi",
+    "question": "Why is Dependency Injection beneficial in FastAPI?",
+    "ground_truth": "It enables code reuse, shared database connections, and uniform security and authentication enforcement across endpoints.",
+    "category": "concept"
+  },
+  {
+    "id": "fastapi_10",
+    "domain": "fastapi",
+    "question": "Give an example of writing a notification in background in FastAPI.",
+    "ground_truth": "Define a function write_notification and add it with background_tasks.add_task(write_notification, email).",
+    "category": "code"
+  },
+  {
+    "id": "docker_01",
+    "domain": "docker",
+    "question": "What command builds a Docker image from a Dockerfile in the current directory?",
+    "ground_truth": "docker build -t image_name:tag .",
+    "category": "syntax"
+  },
+  {
+    "id": "docker_02",
+    "domain": "docker",
+    "question": "How do you map host port 8080 to container port 80?",
+    "ground_truth": "Use the -p flag: docker run -p 8080:80 image_name.",
+    "category": "syntax"
+  },
+  {
+    "id": "docker_03",
+    "domain": "docker",
+    "question": "What is the benefit of multi-stage Docker builds?",
+    "ground_truth": "They drastically reduce image size by separating the build environment and compilers from the final lightweight runtime image.",
+    "category": "concept"
+  },
+  {
+    "id": "docker_04",
+    "domain": "docker",
+    "question": "How do you view running Docker containers including stopped ones?",
+    "ground_truth": "Run docker ps -a.",
+    "category": "syntax"
+  },
+  {
+    "id": "docker_05",
+    "domain": "docker",
+    "question": "Why are Docker volumes used instead of writing inside the container writable layer?",
+    "ground_truth": "The container writable layer is ephemeral; volumes persist data across container restarts and removals.",
+    "category": "concept"
+  },
+  {
+    "id": "docker_06",
+    "domain": "docker",
+    "question": "How do you run containers in the background detached mode?",
+    "ground_truth": "Use the -d flag with docker run, e.g. docker run -d image_name.",
+    "category": "syntax"
+  },
+  {
+    "id": "docker_07",
+    "domain": "docker",
+    "question": "What is the difference between a named volume and a bind mount in Docker?",
+    "ground_truth": "Named volumes are managed completely by Docker in /var/lib/docker/volumes, while bind mounts map an exact host directory path into the container.",
+    "category": "concept"
+  },
+  {
+    "id": "docker_08",
+    "domain": "docker",
+    "question": "What command starts all services defined in a docker-compose.yml file in detached mode?",
+    "ground_truth": "docker compose up -d (or docker-compose up -d).",
+    "category": "syntax"
+  },
+  {
+    "id": "docker_09",
+    "domain": "docker",
+    "question": "How do you follow live log output for a running container?",
+    "ground_truth": "docker logs -f <container_id>.",
+    "category": "syntax"
+  },
+  {
+    "id": "git_01",
+    "domain": "git",
+    "question": "What is the main difference between git merge and git rebase?",
+    "ground_truth": "Git merge creates a 3-way merge commit preserving exact history, while git rebase reapplies commits on top of another branch creating a linear history.",
+    "category": "concept"
+  },
+  {
+    "id": "git_02",
+    "domain": "git",
+    "question": "How do you create and immediately switch to a new branch in Git?",
+    "ground_truth": "git checkout -b <branch_name> or git switch -c <branch_name>.",
+    "category": "syntax"
+  },
+  {
+    "id": "git_03",
+    "domain": "git",
+    "question": "What does git cherry-pick do?",
+    "ground_truth": "It applies the changes introduced by a specific existing commit from another branch onto the current working branch.",
+    "category": "concept"
+  },
+  {
+    "id": "git_04",
+    "domain": "git",
+    "question": "How do you temporarily save uncommitted local changes without committing them?",
+    "ground_truth": "Run git stash (or git stash save).",
+    "category": "syntax"
+  },
+  {
+    "id": "git_05",
+    "domain": "git",
+    "question": "How do you restore the most recently stashed changes in Git?",
+    "ground_truth": "Run git stash pop.",
+    "category": "syntax"
+  },
+  {
+    "id": "git_06",
+    "domain": "git",
+    "question": "What is the difference between git revert and git reset?",
+    "ground_truth": "Git revert creates a new commit that undoes changes safely for public branches, while git reset moves HEAD backwards and rewrites history.",
+    "category": "concept"
+  },
+  {
+    "id": "git_07",
+    "domain": "git",
+    "question": "What does git reset --soft HEAD~1 do?",
+    "ground_truth": "It moves HEAD back by one commit but keeps all changes staged in the index.",
+    "category": "concept"
+  },
+  {
+    "id": "git_08",
+    "domain": "git",
+    "question": "How do you inspect the contents of a stash without popping it?",
+    "ground_truth": "Run git stash show -p stash@{0}.",
+    "category": "syntax"
+  },
+  {
+    "id": "postgres_01",
+    "domain": "postgres",
+    "question": "When should you use a GIN index instead of a default B-Tree index in PostgreSQL?",
+    "ground_truth": "GIN indexes are suited for composite types, arrays, full-text search, and JSONB document searches, while B-Trees are best for scalar equality and range queries.",
+    "category": "concept"
+  },
+  {
+    "id": "postgres_02",
+    "domain": "postgres",
+    "question": "How do you extract a JSON field as text in PostgreSQL JSONB queries?",
+    "ground_truth": "Use the ->> operator, for example SELECT data->>'customer' FROM orders.",
+    "category": "syntax"
+  },
+  {
+    "id": "postgres_03",
+    "domain": "postgres",
+    "question": "Why is connection pooling important in PostgreSQL?",
+    "ground_truth": "PostgreSQL allocates a separate OS process per connection; pooling tools like PgBouncer prevent memory thrashing when many concurrent clients connect.",
+    "category": "concept"
+  },
+  {
+    "id": "postgres_04",
+    "domain": "postgres",
+    "question": "How do you start and commit an explicit transaction block in PostgreSQL?",
+    "ground_truth": "Execute BEGIN; followed by queries, and finalize with COMMIT; or abort with ROLLBACK;.",
+    "category": "syntax"
+  },
+  {
+    "id": "postgres_05",
+    "domain": "postgres",
+    "question": "What operator checks if a JSONB column contains a specific JSON structure?",
+    "ground_truth": "The containment operator @>, e.g., data @> '{\"customer\": \"Alice\"}'.",
+    "category": "syntax"
+  },
+  {
+    "id": "unanswerable_01",
+    "domain": "general",
+    "question": "How do you deploy Helm charts in Kubernetes using Terraform?",
+    "ground_truth": "The indexed documentation does not cover Kubernetes Helm charts or Terraform.",
+    "category": "unanswerable"
+  },
+  {
+    "id": "unanswerable_02",
+    "domain": "general",
+    "question": "How do you write custom middleware in Django for session cookies?",
+    "ground_truth": "The indexed documentation does not cover Django middleware.",
+    "category": "unanswerable"
+  },
+  {
+    "id": "unanswerable_03",
+    "domain": "general",
+    "question": "What are React useEffect dependencies and cleanup functions?",
+    "ground_truth": "The indexed documentation does not cover React hooks or frontend frameworks.",
+    "category": "unanswerable"
+  }
+]

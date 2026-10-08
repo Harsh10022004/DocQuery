@@ -1,0 +1,12 @@
+{
+  "timestamp": "2026-10-08 11:06:22",
+  "total_requests": 45,
+  "throughput_rps": 4.35,
+  "latency_p50_seconds": 0.207,
+  "latency_p90_seconds": 0.419,
+  "latency_p99_seconds": 0.642,
+  "latency_mean_seconds": 0.23,
+  "cache_hit_rate_pct": 66.7,
+  "avg_cost_per_request_usd": 2e-05,
+  "cost_per_1000_requests_usd": 0.02
+}

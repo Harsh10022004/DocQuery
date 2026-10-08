@@ -1,0 +1,34 @@
+# DocuQuery Configuration
+# Team 7 - ML System Design & LLMOps Capstone
+
+project:
+  name: "DocuQuery"
+  version: "1.0.0"
+
+models:
+  primary_llm: "gemini-2.0-flash"
+  fallback_llm: "gpt-4o-mini"
+  embedding_model: "all-MiniLM-L6-v2"  # local chromadb default, zero API cost for embeddings
+  temperature: 0.1
+  max_output_tokens: 450
+
+retrieval:
+  top_k_candidates: 10
+  final_top_k: 3           # strict budget to keep prompt tokens under ~800
+  rrf_k: 60                # standard constant for reciprocal rank fusion
+  min_relevance_score: 0.35 # early-exit cutoff for out-of-domain queries
+
+cache:
+  similarity_threshold: 0.92  # cosine similarity above this counts as repeated query
+  max_cache_size: 200
+
+serving:
+  host: "127.0.0.1"
+  port: 8000
+  rate_limit_per_min: 20      # token bucket limit per client
+  bucket_capacity: 20
+
+pricing_per_million_tokens:
+  # Gemini 2.0 Flash pricing
+  input_usd: 0.10
+  output_usd: 0.40
