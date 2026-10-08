@@ -2,7 +2,9 @@
 # evaluation with an LLM-as-judge). Kept separate from requirements.txt so the main
 # app and CI install stay small, these pull in a lot through langchain and we only
 # run that script by hand every now and then.
-ragas>=0.1.7
-langchain-groq>=0.2.0
-langchain-huggingface>=0.1.0
+ragas>=0.4.0
+langchain-groq>=1.1.0
 datasets>=2.18.0
+# ragas 0.4.x still imports langchain_community.chat_models.vertexai, which was
+# removed in community 0.4, so it has to stay on the 0.3 line
+langchain-community<0.4
