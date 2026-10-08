@@ -1,6 +1,5 @@
-import chromadb
 from rank_bm25 import BM25Okapi
-from src.ingest import CHROMA_DIR, load_markdown_chunks
+from src.ingest import load_markdown_chunks, build_vector_store
 
 
 class HybridRetriever:
@@ -13,12 +12,13 @@ class HybridRetriever:
         self.top_k = top_k
         self.rrf_k = rrf_k
         
-        # load chroma collection
-        self.client = chromadb.PersistentClient(path=CHROMA_DIR)
-        self.collection = self.client.get_collection("docuquery_chunks")
-        
         # build in-memory bm25 index from raw chunks
         self.chunks = load_markdown_chunks()
+
+        # build_vector_store returns the existing collection if it's already there,
+        # otherwise it builds it. using this instead of get_collection so a fresh
+        # deploy (chroma_db isn't committed) indexes itself instead of crashing
+        self.collection = build_vector_store(self.chunks)
         self.chunk_by_id = {c["id"]: c for c in self.chunks}
         
         tokenized_corpus = [c["text"].lower().split() for c in self.chunks]

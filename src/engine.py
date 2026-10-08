@@ -20,8 +20,7 @@ def load_config():
 
 
 def load_prompt(filename: str) -> str:
-    """Prompts live as plain .txt files in prompts/ so changes show up in git diffs
-    instead of being buried as string literals in the python code."""
+    """Loads a prompt from prompts/. Kept as files so prompt edits show up in git diffs."""
     with open(os.path.join(PROMPTS_DIR, filename), "r", encoding="utf-8") as f:
         return f.read().strip()
 
@@ -38,12 +37,12 @@ class DocuQueryEngine:
             max_size=self.config["cache"].get("max_cache_size", 200)
         )
         
-        # pricing constants (Gemini Flash default)
+        # pricing constants, see configs/config.yaml
         self.input_rate = self.config["pricing_per_million_tokens"]["input_usd"] / 1_000_000
         self.output_rate = self.config["pricing_per_million_tokens"]["output_usd"] / 1_000_000
 
-        # LLM setup (gemini or openai if api keys exist)
-        self.gemini_key = os.getenv("GEMINI_API_KEY")
+        # LLM setup (groq first, openai as fallback, offline if neither)
+        self.groq_key = os.getenv("GROQ_API_KEY")
         self.openai_key = os.getenv("OPENAI_API_KEY")
 
         # prompts loaded from prompts/ so they're versioned + diffable in git
@@ -60,25 +59,27 @@ class DocuQueryEngine:
         return max(1, len(text) // 4)
 
     def _call_llm(self, prompt: str, system_prompt: str):
-        """Calls Gemini Flash, OpenAI, or local extractor if offline."""
-        if self.gemini_key:
+        """Calls Groq, then OpenAI, then the local extractor if neither key works."""
+        if self.groq_key:
             try:
-                import google.generativeai as genai
-                genai.configure(api_key=self.gemini_key)
-                model = genai.GenerativeModel(
-                    model_name=self.config["models"]["primary_llm"],
-                    system_instruction=system_prompt
+                from groq import Groq
+                client = Groq(api_key=self.groq_key)
+                res = client.chat.completions.create(
+                    model=self.config["models"]["primary_llm"],
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": prompt}
+                    ],
+                    max_tokens=self.config["models"]["max_output_tokens"],
+                    temperature=self.config["models"]["temperature"]
                 )
-                res = model.generate_content(
-                    prompt,
-                    generation_config={"max_output_tokens": self.config["models"]["max_output_tokens"], "temperature": 0.1}
-                )
-                out_text = res.text
-                in_tokens = self._estimate_tokens(prompt + system_prompt)
-                out_tokens = self._estimate_tokens(out_text)
+                out_text = res.choices[0].message.content
+                # groq gives real token counts in the response, so no estimating needed
+                in_tokens = res.usage.prompt_tokens
+                out_tokens = res.usage.completion_tokens
                 return out_text, in_tokens, out_tokens
             except Exception as e:
-                print(f"Gemini API call failed, falling back: {e}")
+                print(f"Groq API call failed, falling back: {e}")
 
         if self.openai_key:
             try:
@@ -114,10 +115,9 @@ class DocuQueryEngine:
         Executes the full cost-optimized query pipeline:
         Intent Route -> Cache Check -> Hybrid Retrieval -> Early Exit -> LLM Generation.
 
-        naive_mode=True skips the router/cache/early-exit/RRF entirely and just does a
-        single dense-only lookup with a bigger raw context dump. We use this in
-        eval/baseline_naive_rag.py to get real "before" numbers for the README table
-        instead of just making them up.
+        naive_mode skips the router, cache, early-exit and RRF, and just does a dense-only
+        lookup with a bigger raw context dump. Used by eval/baseline_naive_rag.py for the
+        before/after comparison numbers.
         """
         start_time = time.time()
 
@@ -219,9 +219,8 @@ class DocuQueryEngine:
         return result
 
     def _query_naive(self, user_query: str, start_time: float):
-        """Stand-in for a 'naive RAG' baseline: no cache, no hybrid/RRF, no early-exit
-        gate, just dense top-5 chunks dumped straight into the prompt. Used only by
-        eval/baseline_naive_rag.py for the README comparison table."""
+        """Naive RAG baseline: no cache, no hybrid/RRF, no early-exit, just dense top-5
+        chunks dumped into the prompt."""
         where_filter = None
         dense_results = self.retriever.collection.query(query_texts=[user_query], n_results=5, where=where_filter)
         ids = dense_results["ids"][0] if dense_results["ids"] else []
@@ -261,7 +260,7 @@ class DocuQueryEngine:
 
         context_str = "\n\n".join([f"[{c['title']}]\n{c.get('excerpt', '')}" for c in context_chunks])
         
-        if self.gemini_key or self.openai_key:
+        if self.groq_key or self.openai_key:
             prompt = f"Documentation Context:\n{context_str}\n\nDeveloper Query:\n{query}\n\nEngineering Analysis:"
             analysis_text, _, _ = self._call_llm(prompt, self.deep_analysis_prompt)
             return analysis_text

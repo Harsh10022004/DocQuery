@@ -6,7 +6,11 @@ project:
   version: "1.0.0"
 
 models:
-  primary_llm: "gemini-2.5-flash"  # gemini-2.0-flash got deprecated. tried gemini-3.8-flash but free tier only allows 20 requests/day on that one, 2.5-flash has a much bigger free quota
+  # moved to groq after the gemini free tier capped us at 20 requests/day, which
+  # wasn't enough to even finish one 43-case eval run.
+  # gpt-oss-20b is the small one, picked it over the 120b since answer quality on
+  # our benchmark was basically the same when the context is already retrieved
+  primary_llm: "openai/gpt-oss-20b"
   fallback_llm: "gpt-4o-mini"
   embedding_model: "all-MiniLM-L6-v2"  # local chromadb default, zero API cost for embeddings
   temperature: 0.1
@@ -29,6 +33,6 @@ serving:
   bucket_capacity: 20
 
 pricing_per_million_tokens:
-  # Gemini 2.0 Flash pricing
+  # groq openai/gpt-oss-20b. check groq.com/pricing if these change
   input_usd: 0.10
-  output_usd: 0.40
+  output_usd: 0.50

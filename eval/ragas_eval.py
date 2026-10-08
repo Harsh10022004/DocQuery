@@ -1,16 +1,12 @@
 """
-Real RAGAS evaluation, separate from eval/run_eval.py.
+RAGAS evaluation (faithfulness, answer relevancy, context precision) using the same
+Groq model we serve answers with as the judge.
 
-run_eval.py is our fast keyword-overlap check that runs in CI on every push -
-it's cheap and doesn't need an API key. This script does an actual RAGAS pass
-(faithfulness, answer relevancy, context precision) using Gemini Flash as the
-judge model, which costs real API credits and takes longer, so we run it
-manually before submission instead of on every CI run.
+Separate from run_eval.py because this takes a while and burns through a lot more
+requests, so we run it by hand before submission rather than on every CI push. Only
+scores a 15 case subset.
 
-Only scores a subset of the benchmark (15 cases) to keep this inside the
-~$5-20 total API budget mentioned in the project handout.
-
-Needs GEMINI_API_KEY set and `pip install -r requirements-ragas.txt`.
+Needs GROQ_API_KEY and `pip install -r requirements-ragas.txt`.
 """
 import os
 import sys
@@ -40,20 +36,21 @@ def build_eval_rows(engine, cases):
 
 
 def main():
-    gemini_key = os.getenv("GEMINI_API_KEY")
-    if not gemini_key:
-        print("GEMINI_API_KEY not set - RAGAS eval needs a real LLM judge, skipping.")
-        print("Set GEMINI_API_KEY in .env and re-run: python eval/ragas_eval.py")
+    groq_key = os.getenv("GROQ_API_KEY")
+    if not groq_key:
+        print("GROQ_API_KEY not set - RAGAS needs a real LLM judge, skipping.")
+        print("Set GROQ_API_KEY in .env and re-run: python eval/ragas_eval.py")
         return
 
     try:
         from ragas import evaluate
         from ragas.metrics import faithfulness, answer_relevancy, context_precision
         from datasets import Dataset
-        from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+        from langchain_groq import ChatGroq
+        from langchain_huggingface import HuggingFaceEmbeddings
     except ImportError:
-        print("ragas / langchain-google-genai / datasets not installed.")
-        print("Run: pip install ragas langchain-google-genai datasets")
+        print("ragas deps not installed.")
+        print("Run: pip install -r requirements-ragas.txt")
         return
 
     with open(BENCHMARK_FILE, "r", encoding="utf-8") as f:
@@ -69,8 +66,12 @@ def main():
     rows = build_eval_rows(engine, subset)
     dataset = Dataset.from_list(rows)
 
-    judge_llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", google_api_key=gemini_key, temperature=0)
-    judge_embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=gemini_key)
+    judge_model = engine.config["models"]["primary_llm"]
+    judge_llm = ChatGroq(model=judge_model, api_key=groq_key, temperature=0)
+
+    # groq has no embeddings endpoint, so answer_relevancy uses the same local
+    # MiniLM model the vector store already uses. keeps it free too.
+    judge_embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
     result = evaluate(
         dataset,
@@ -85,7 +86,7 @@ def main():
         "ragas_faithfulness": round(float(scores["faithfulness"]), 3),
         "ragas_answer_relevancy": round(float(scores["answer_relevancy"]), 3),
         "ragas_context_precision": round(float(scores["context_precision"]), 3),
-        "judge_model": "gemini-2.0-flash",
+        "judge_model": judge_model,
     }
 
     print("\nRAGAS results:")

@@ -1,17 +1,15 @@
 # Prompt changelog
 
-We used to have these hardcoded as python strings inside src/engine.py which meant
-we couldn't diff them properly when we tweaked wording. Moved them out here so git
-actually shows what changed between versions.
+These were hardcoded as strings in src/engine.py before, so tweaking the wording never
+showed up properly in a diff. Moved them out into files.
 
 ## system_prompt.txt
-- v1 (initial): basic "answer only from context" instruction.
-- v2 (current): added a line telling the model to ignore any instructions that show
-  up inside the retrieved doc chunks or the user question itself. We added this after
-  testing a few prompt-injection style questions in our eval set (see
-  data/eval/benchmark.json, category: adversarial) where the model would sometimes
-  follow an instruction buried in the question instead of just answering from docs.
+- v1: basic "answer only from the context" instruction.
+- v2 (current): added the line about ignoring instructions that appear inside the
+  retrieved chunks or the question itself. Added this after the adversarial cases in
+  data/eval/benchmark.json showed the model sometimes following an instruction buried
+  in the question instead of just answering from the docs.
 
 ## deep_analysis_prompt.txt
-- v1 (current): unchanged since first version, used only for the optional "Deep AI
-  Analysis" expander in the Streamlit UI.
+- v1 (current): unchanged. Only used by the optional "Deep AI Analysis" expander in the
+  Streamlit UI.

@@ -20,51 +20,65 @@ Modern developer workflows rely heavily on documentation lookups across multiple
 
 > **Rubric Requirement**: *"no numbers, no credit"*
 
-All metrics below come from actually running the scripts in this repo, not made up:
-`eval/run_eval.py` (43-case benchmark, fast keyword-overlap scoring, runs in CI),
-`eval/baseline_naive_rag.py` (naive RAG comparison - no cache, no hybrid, no
-early-exit, built from a `naive_mode` flag on the same engine), and
-`eval/load_test.py` (latency/throughput under repeated queries).
+All of these come from the scripts in this repo: `eval/run_eval.py` (the 43-case
+benchmark with keyword scoring, also what CI runs), `eval/baseline_naive_rag.py` (naive
+RAG comparison with no cache, no hybrid retrieval and no early exit, through a
+`naive_mode` flag on the same engine) and `eval/load_test.py` (latency and throughput
+on repeated queries).
 
-### Performance Summary Table (measured with a real Gemini API key, gemini-2.5-flash)
+Measured on `openai/gpt-oss-20b` via Groq.
 
-| Metric | Naive RAG Baseline | DocuQuery (Our System) | Measured Improvement |
+| Metric | Naive RAG Baseline | DocuQuery | Notes |
 | :--- | :--- | :--- | :--- |
-| **Avg Faithfulness** | 72.9% | **86.5%** | hybrid retrieval + tighter context measurably improves grounding |
-| **Avg Relevance** | n/a | **94.2%** | |
-| **Faithfulness - adversarial/guardrail cases** | n/a | **100%** | all 8 prompt-injection attempts correctly refused |
-| **Latency P50** | 1.328s | **0.204s*** | |
-| **Latency P90** | 3.115s | **1.414s*** | |
-| **Avg Cost / Request** | $0.000111 | **$0.000019*** | ~83% cheaper, mostly from caching repeated questions |
-| **Cache Hit Rate** | 0.0% | **66.7%** (sim $> 0.92$) | 2 of 3 repeated questions cost $0.00 |
-| **Quality Gate Status** | Manual / None | **PASSED** (CI threshold: 85%) | |
+| Faithfulness, answerable cases only | **86.0%** | 83.8% | naive scores higher here, see below |
+| Faithfulness, all 43 cases | n/a | **88.0%** | naive has no abstention so it can't run the other 11 |
+| Avg Relevance | n/a | **93.0%** | |
+| Faithfulness, adversarial cases | n/a | **100%** | all 8 injection attempts refused |
+| Faithfulness, unanswerable cases | n/a | **100%** | abstains instead of guessing |
+| Latency P50 | 3.847s | **0.519s** | 7.4x faster |
+| Latency P90 | 6.749s | **3.090s** | |
+| Avg Cost / Request | $0.000142 | **$0.000024** | 83% cheaper |
+| Cost / 1000 requests | $0.142 | **$0.024** | |
+| Cache Hit Rate | 0.0% | **66.7%** (sim $> 0.92$) | 2 of every 3 repeated questions cost nothing |
+| Quality Gate | none | **PASSED** (threshold 85%) | |
 
-\* These three "Our System" numbers come from `eval/load_test.py`, which we ran
-*after* `run_eval.py` and `baseline_naive_rag.py` already used up this Google
-account's free-tier quota for the day (see note below) - so part of that load test
-run fell back to offline synthesis instead of real Gemini calls, and those numbers
-undersell the real win from caching (avoiding a ~1-3s real API round trip on a
-cache hit is the actual story, not visible when the fallback kicks in). **Re-run
-`eval/load_test.py` on a day with fresh quota** (or after enabling billing) to get
-a clean number here before your presentation.
+Per-category faithfulness: syntax 82.4%, concept 85.6%, code 86.7%, unanswerable 100%,
+adversarial 100%.
 
-**Important note on quota**: this Google account's free tier allows only **20
-Gemini requests/day** across the modern model family (not the ~1500/day some older
-docs mention) - we hit this limit partway through testing. If this happens to you
-too: either wait for the next day's reset, request a quota increase in Google AI
-Studio, or enable pay-as-you-go billing (the project budget note allows $5-$20
-total, and actual spend here was under a cent for the full 43-question benchmark).
-Also add `GEMINI_API_KEY` as a GitHub Actions repo secret so the CI gate
-(`.github/workflows/eval_gate.yml`, already wired to read it) tests real answers
-instead of hitting this same quota wall on every push - the workflow currently
-pulls the key from `secrets.GEMINI_API_KEY`, which needs to be added once in the
-repo's Settings.
+**On the naive baseline beating us on faithfulness.** It scores 86.0% against our 83.8%
+on the same 32 answerable questions, and we're leaving that in rather than quietly
+comparing our 43-case average (88.0%) against its 32-case one, which would look better
+but isn't the same measurement.
 
-We also had to switch the model in `configs/config.yaml` from `gemini-2.0-flash`
-(deprecated by Google) to `gemini-2.5-flash` after discovering the deprecation
-during testing - the newer `gemini-3.8-flash` exists but has an even smaller free
-quota (20/day on its own), so `gemini-2.5-flash` is the better default for a
-budget-constrained student project.
+The reason it wins is that naive mode stuffs 5 chunks into the prompt where we cap at 3.
+More context means more of the ground truth wording ends up in the answer, and our
+keyword-overlap scorer rewards exactly that. So the gap is mostly measuring prompt size,
+not answer quality. It's a good illustration of why we added the RAGAS scorer, since a
+keyword metric can be gamed by just pasting in more text.
+
+What the baseline can't do at all is abstain. It has no early-exit gate, so it answers
+out-of-domain questions and prompt injections with equal confidence, and those 11 cases
+aren't in its 86.0% because it has no sensible way to be scored on them. Against that,
+our 3-chunk cap costs about 2 points on a keyword metric and buys 7.4x lower latency,
+83% lower cost, and a system that says "not in the docs" instead of making something up.
+
+### Why we ended up on Groq
+
+We went through three providers. Started on `gemini-2.0-flash`, Google deprecated it, so
+we moved to `gemini-2.5-flash`. Then it turned out the free tier on our key was 20
+requests a day across the whole current model family, not the ~1500/day older docs
+mention. One 43-case eval run doesn't even fit in that, and we used up a full day's
+quota getting through two scripts.
+
+Groq's free tier actually handles running the benchmark repeatedly, which we need for
+CI. It also returns real token counts in the response where Gemini didn't, so cost
+tracking is metered now instead of estimated off a chars-per-token guess.
+
+All three swaps ended up being config changes rather than code changes, since the model
+name sits in `configs/config.yaml` and the provider call is all inside `_call_llm`.
+
+CI reads the key from `secrets.GROQ_API_KEY`, which has to be added in the repo settings
+or the gate just ends up testing the offline fallback.
 
 ---
 
@@ -103,7 +117,7 @@ budget-constrained student project.
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
 │ [Inference & Serving Layer]                                                            │
 │ • Prefix Caching Optimization: Static instructions at front for KV reuse discounts     │
-│ • Right-Sized Generation: Gemini 2.0 Flash / GPT-4o-mini                               │
+│ • Right-Sized Generation: Groq Llama 3.3 70B / GPT-4o-mini fallback                    │
 │ • Streaming Serving (SSE): Word-by-word streaming for instant TTFT (< 250ms)           │
 │ • Source Citations: Exact clickable doc links appended to answer                       │
 └─────────────────────────────────────────┬──────────────────────────────────────────────┘
@@ -136,15 +150,15 @@ budget-constrained student project.
 5. **Config & Prompt Versioning**:
    - All hyperparameters (similarity thresholds, top-$k$, models, rate limits) are declared in `configs/config.yaml`.
    - System/analysis prompts live as plain `.txt` files in `prompts/` (not hardcoded in Python) with a changelog in `prompts/CHANGELOG.md`, so prompt wording changes actually show up in `git diff`.
-6. **RAGAS Evaluation (LLM-as-judge)**:
-   - `eval/run_eval.py` is a fast, free, keyword-overlap heuristic that runs on every push in CI.
-   - `eval/ragas_eval.py` is a separate, deeper evaluation using the real [RAGAS](https://github.com/explodinggradients/ragas) library (faithfulness, answer relevancy, context precision) with Gemini Flash as the judge model. This costs real API credits so we run it manually before submission, not on every CI push.
-7. **Guardrails Against Prompt Injection**:
-   - Added 8 adversarial test cases to `data/eval/benchmark.json` (category `adversarial`) that try instruction-override, role-play, and "ignore previous instructions" style attacks.
-   - The system prompt (`prompts/system_prompt.txt`) explicitly tells the model to treat retrieved docs and user questions as untrusted content, not commands.
-8. **Observability / Logged Traces**:
-   - Every query (cache hit, early-exit, intent-routed, or a real generation) is appended as one JSON line to `logs/traces.jsonl` via `src/trace_logger.py` - cost, latency, tokens, cache hit, per request.
-   - The Streamlit UI has a dashboard tab that reads this file back and plots cost/latency over time, so telemetry isn't lost when the session ends.
+6. **Evaluation (two scorers)**:
+   - `eval/run_eval.py` is the fast keyword-overlap one. Free and no judge model needed, so it runs on every push in CI.
+   - `eval/ragas_eval.py` uses the [RAGAS](https://github.com/explodinggradients/ragas) library (faithfulness, answer relevancy, context precision) with the Groq model judging. Takes longer and uses a lot more requests so we run it by hand, not per push.
+7. **Prompt Injection Guardrails**:
+   - 8 adversarial cases in `data/eval/benchmark.json` covering instruction override, roleplay framing and "ignore previous instructions" style attacks.
+   - `prompts/system_prompt.txt` tells the model to treat retrieved docs and the user question as untrusted content rather than instructions.
+8. **Logged Traces**:
+   - Every query gets one JSON line in `logs/traces.jsonl` via `src/trace_logger.py` with cost, latency, tokens and cache hit, whether it was a cache hit, early exit, intent route or a real generation.
+   - The Streamlit dashboard tab reads that file back and plots cost and latency over time, so the telemetry survives past the session.
 
 ---
 
@@ -167,7 +181,8 @@ Doc_Query/
 │   │   ├── git.md
 │   │   └── postgres.md
 │   ├── eval/
-│   │   └── benchmark.json      # 43 hand-crafted test cases (35 Q&A + 3 unanswerable + 8 adversarial/guardrail)
+│   │   ├── benchmark.json      # 43 hand-crafted test cases (32 Q&A + 3 unanswerable + 8 adversarial/guardrail)
+│   │   └── README.md           # Eval set breakdown + scoring methodology
 │   └── chroma_db/              # Persistent Chroma vector store
 ├── src/
 │   ├── ingest.py               # Header-based chunking & index builder
@@ -221,8 +236,9 @@ Copy `.env.example` to `.env`:
 ```bash
 cp .env.example .env
 ```
-Add your `GEMINI_API_KEY` or `OPENAI_API_KEY`.  
-*(Note: If no API key is provided, DocuQuery seamlessly runs in local evaluation mode using grounded context synthesis).*
+Add your `GROQ_API_KEY` (free key from console.groq.com). `OPENAI_API_KEY` is optional
+and only gets used if Groq fails.  
+*(Note: If no API key is provided, DocuQuery still runs in local offline mode, building answers straight from the retrieved chunks instead of calling an LLM.)*
 
 ### 3. Build Documentation Indexes
 ```bash
@@ -240,14 +256,14 @@ python eval/baseline_naive_rag.py
 # Latency and throughput load test
 python eval/load_test.py
 
-# Optional, needs GEMINI_API_KEY and extra deps (pip install ragas langchain-google-genai datasets):
-# real RAGAS scoring (faithfulness/answer relevancy/context precision) with Gemini Flash as judge
+# Optional, needs GROQ_API_KEY and extra deps (pip install -r requirements-ragas.txt):
+# RAGAS scoring (faithfulness/answer relevancy/context precision)
 python eval/ragas_eval.py
 ```
 
-Re-run all of these with a real `GEMINI_API_KEY` set before your final submission -
-the numbers checked into this repo right now were generated without an API key
-(offline fallback mode), see the note in Section 2.
+These all need `GROQ_API_KEY` set to produce meaningful numbers. Without it they run
+against the offline fallback, which scores much lower since it returns raw chunk text
+rather than a synthesised answer.
 
 ### 5. Launch the Streamlit Web Application
 ```bash
@@ -261,7 +277,33 @@ uvicorn src.server:app --reload --port 8000
 
 ---
 
-## 7. Resume-Ready Description
+## 7. Deploying to Streamlit Community Cloud
+
+`data/chroma_db/` is gitignored, so there's no index in the repo. `src/retrieval.py`
+builds it on first startup if it's missing, which means a fresh container can set
+itself up instead of crashing on a missing collection.
+
+1. Push to GitHub, repo has to be public.
+2. share.streamlit.io, sign in with GitHub, New app.
+3. Point it at this repo, branch `main`, main file `ui/app.py`.
+4. Under Advanced settings > Secrets, add:
+   ```toml
+   GROQ_API_KEY = "your_key_here"
+   ```
+   Streamlit also exposes secrets as env vars, so the `os.getenv` call in
+   `src/engine.py` picks it up without changing any code.
+5. Deploy. First load takes a minute or two while it installs everything and builds
+   the index.
+
+One thing to know: `logs/traces.jsonl` sits on the container filesystem, so it wipes
+whenever the app redeploys or wakes back up from sleep. The traces committed here are
+from local runs and still show the format and the dashboard working. Making it actually
+persist would mean pointing `src/trace_logger.py` at a database or something like
+Langfuse instead of a flat file.
+
+---
+
+## 8. Resume-Ready Description
 
 > *"Architected and deployed **DocuQuery**, a technical documentation Q&A system featuring hybrid retrieval (BM25 + ChromaDB) and in-memory semantic caching, reducing LLM token costs by 99% and cutting P50 latency from 2.15s to 0.22s."*  
 > *"Engineered automated LLMOps evaluation pipelines with a 35-item domain benchmark and GitHub Actions CI/CD regression gates, enforcing 90.0% answer faithfulness across FastAPI, Docker, Git, and PostgreSQL ecosystems."*

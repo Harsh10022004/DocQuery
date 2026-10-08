@@ -82,11 +82,10 @@ def run_benchmark():
         lat = res["latency_seconds"]
         cost = res["cost_usd"]
 
-        # small delay so we don't trip Gemini's free-tier per-minute rate limit
-        # mid-benchmark (cache hits/early-exits don't call the API so we skip
-        # sleeping for those)
+        # small delay to stay under groq's per-minute request limit. cache hits and
+        # early exits never touch the API so no need to sleep on those
         if not res.get("cache_hit") and not res.get("early_exit") and not res.get("intent_routed"):
-            time.sleep(3)
+            time.sleep(1)
 
         f_score, r_score = evaluate_faithfulness_and_relevance(ans, gt, is_unans, is_adversarial)
         faithfulness_scores.append(f_score)

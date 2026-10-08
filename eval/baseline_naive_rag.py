@@ -1,11 +1,10 @@
 """
-Runs the same benchmark questions through a "naive RAG" mode (no semantic
-cache, no hybrid retrieval/RRF, no early-exit abstention - just dense top-5
-chunks dumped straight into the prompt every time) so the README comparison
-table numbers are actually measured instead of guessed.
+Runs the benchmark questions through naive RAG mode (no semantic cache, no hybrid
+retrieval or RRF, no early-exit, just dense top-5 chunks dumped into the prompt) to
+get the baseline numbers for the comparison table in the README.
 
-This is what DocuQuery would look like if we'd stopped after the first
-version, before we added caching/hybrid search/early-exit.
+Basically what DocuQuery looked like before we added caching, hybrid search and the
+early-exit gate.
 """
 import os
 import sys
@@ -36,7 +35,7 @@ def run_naive_baseline():
     print(f"Running naive RAG baseline across {len(cases)} cases (no cache, no hybrid, no early-exit)...")
     for idx, item in enumerate(cases, 1):
         res = engine.query(item["question"], naive_mode=True)
-        time.sleep(3)  # stay under Gemini free-tier rate limit
+        time.sleep(1)  # stay under groq's per-minute rate limit
         f_score, _ = evaluate_faithfulness_and_relevance(res["answer"], item["ground_truth"], False, False)
         latencies.append(res["latency_seconds"])
         costs.append(res["cost_usd"])
