@@ -1,12 +1,12 @@
 {
-  "timestamp": "2026-10-08 11:06:22",
+  "timestamp": "2026-10-08 20:21:00",
   "total_requests": 45,
-  "throughput_rps": 4.35,
-  "latency_p50_seconds": 0.207,
-  "latency_p90_seconds": 0.419,
-  "latency_p99_seconds": 0.642,
-  "latency_mean_seconds": 0.23,
+  "throughput_rps": 2.0,
+  "latency_p50_seconds": 0.222,
+  "latency_p90_seconds": 1.414,
+  "latency_p99_seconds": 3.112,
+  "latency_mean_seconds": 0.499,
   "cache_hit_rate_pct": 66.7,
-  "avg_cost_per_request_usd": 2e-05,
-  "cost_per_1000_requests_usd": 0.02
+  "avg_cost_per_request_usd": 1.9e-05,
+  "cost_per_1000_requests_usd": 0.019
 }

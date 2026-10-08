@@ -4,6 +4,15 @@
 **Course**: Scaler School of Technology | ML System Design & LLMOps Portfolio Project  
 **Team**: Team 7 (Harsh, Indrajeet, Satyam, Shivam, Siddharth, Sushant)  
 
+> **Note on the numbers in this report**: the specific percentages below (90.0%
+> faithfulness etc.) are from an early manual test and are now outdated. The current
+> measured numbers (86.5% faithfulness, 94.2% relevance, 100% on adversarial/guardrail
+> cases, PASSED quality gate) are in `README.md` Section 2, produced by
+> `eval/run_eval.py` and `eval/baseline_naive_rag.py` with a real Gemini API key.
+> `eval/load_test.py`'s latency numbers are still partly affected by hitting this
+> Google account's 20-requests/day free quota mid-run - re-run it on a day with
+> fresh quota before your final submission and update both files together.
+
 ---
 
 ## 1. Problem Framing & Objectives (20% Weight)

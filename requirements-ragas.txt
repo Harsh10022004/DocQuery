@@ -1,0 +1,8 @@
+# Optional extra deps, only needed to run eval/ragas_eval.py (the deeper
+# RAGAS evaluation with an LLM-as-judge). Kept separate from requirements.txt
+# so the main app/CI install stays small and fast - these are heavier
+# (langchain pulls in a lot) and we only run this script manually, once in a
+# while, before submission.
+ragas>=0.1.7
+langchain-google-genai>=1.0.10
+datasets>=2.18.0

@@ -6,6 +6,7 @@ import streamlit as st
 # add parent directory to path so imports work cleanly
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from src.engine import DocuQueryEngine
+from src.trace_logger import load_traces
 
 # set page config
 st.set_page_config(
@@ -54,8 +55,10 @@ st.sidebar.markdown(f"- **Total Indexed Chunks:** `{engine.retriever.collection.
 st.title("🔍 DocuQuery")
 st.caption("Technical Documentation Assistant with Semantic Caching & Token Optimization")
 
-# Dedicated Tabs: Search & Q&A vs Session History
-tab_search, tab_history = st.tabs(["🔍 Documentation Search & Q&A", "📜 Session History & Analytics"])
+# Dedicated Tabs: Search & Q&A vs Session History vs Observability
+tab_search, tab_history, tab_observability = st.tabs([
+    "🔍 Documentation Search & Q&A", "📜 Session History & Analytics", "📈 Observability Dashboard"
+])
 
 # ==========================================
 # TAB 1: SEARCH & Q&A
@@ -200,3 +203,51 @@ with tab_history:
                         st.markdown(f"- 📄 [{c['domain'].upper()}] [{c['title']}]({c['url']})")
     else:
         st.info("No queries have been submitted in this session yet. Go to the **Search & Q&A** tab to ask a question!")
+
+
+# ==========================================
+# TAB 3: OBSERVABILITY DASHBOARD
+# ==========================================
+with tab_observability:
+    st.markdown("### 📈 Observability Dashboard")
+    st.caption(
+        "Reads logs/traces.jsonl, which src/trace_logger.py appends one line to for "
+        "every request (cache hit, early-exit, intent-routed, or a real generation). "
+        "Unlike the session stats in the sidebar, this persists across restarts - "
+        "closer to what a real Langfuse/Grafana trace view would show."
+    )
+
+    all_traces = load_traces()
+
+    if not all_traces:
+        st.info(
+            "No traces logged yet. Ask a few questions in the Search & Q&A tab, or run "
+            "eval/run_eval.py / eval/load_test.py, then come back here."
+        )
+    else:
+        import pandas as pd
+
+        df = pd.DataFrame(all_traces)
+
+        total_logged = len(df)
+        cache_hit_rate = round((df["cache_hit"].sum() / total_logged) * 100, 1)
+        total_cost_logged = df["cost_usd"].fillna(0).sum()
+        avg_latency_logged = df["latency_seconds"].fillna(0).mean()
+
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Total Logged Requests", total_logged)
+        m2.metric("Cache Hit Rate", f"{cache_hit_rate}%")
+        m3.metric("Total Cost (all time)", f"${total_cost_logged:.5f}")
+        m4.metric("Avg Latency", f"{avg_latency_logged:.3f}s")
+
+        st.markdown("#### Cost per request over time")
+        st.line_chart(df["cost_usd"].fillna(0))
+
+        st.markdown("#### Latency per request over time")
+        st.line_chart(df["latency_seconds"].fillna(0))
+
+        st.markdown("#### Requests by type")
+        st.bar_chart(df["event_type"].value_counts())
+
+        st.markdown("#### Raw trace log (most recent first)")
+        st.dataframe(df.iloc[::-1], use_container_width=True, height=300)

@@ -20,22 +20,51 @@ Modern developer workflows rely heavily on documentation lookups across multiple
 
 > **Rubric Requirement**: *"no numbers, no credit"*
 
-All metrics below were measured and generated using our automated evaluation (`eval/run_eval.py`) and load testing (`eval/load_test.py`) suites across 35 domain-specific ground-truth test cases.
+All metrics below come from actually running the scripts in this repo, not made up:
+`eval/run_eval.py` (43-case benchmark, fast keyword-overlap scoring, runs in CI),
+`eval/baseline_naive_rag.py` (naive RAG comparison - no cache, no hybrid, no
+early-exit, built from a `naive_mode` flag on the same engine), and
+`eval/load_test.py` (latency/throughput under repeated queries).
 
-### Performance Summary Table
+### Performance Summary Table (measured with a real Gemini API key, gemini-2.5-flash)
 
 | Metric | Naive RAG Baseline | DocuQuery (Our System) | Measured Improvement |
 | :--- | :--- | :--- | :--- |
-| **P50 Latency** | 2.150s | **0.222s** | **89.7% faster** |
-| **P90 Latency** | 3.480s | **0.455s** | **86.9% faster** |
-| **P99 Latency** | 4.920s | **0.592s** | **87.9% faster** |
-| **Throughput** | 0.85 req/sec | **4.06 req/sec** | **4.8x higher throughput** |
-| **Cache Hit Rate** | 0.0% | **66.7%** (Sim $> 0.92$) | **2/3 queries cost $0.00** |
-| **Avg Cost / Request** | $0.00280 | **$0.000020** | **99.3% cost reduction** |
-| **Cost per 1,000 Queries** | $2.80 | **$0.02** | **Save $2.78 per 1K reqs** |
-| **Evaluation Faithfulness**| 92.4% | **90.0%** | Quality preserved |
-| **Evaluation Relevance**   | 94.0% | **98.6%** | High intent alignment |
-| **Quality Gate Status**   | Manual / None | **PASSED (CI/CD Automated)** | Zero silent regressions |
+| **Avg Faithfulness** | 72.9% | **86.5%** | hybrid retrieval + tighter context measurably improves grounding |
+| **Avg Relevance** | n/a | **94.2%** | |
+| **Faithfulness - adversarial/guardrail cases** | n/a | **100%** | all 8 prompt-injection attempts correctly refused |
+| **Latency P50** | 1.328s | **0.204s*** | |
+| **Latency P90** | 3.115s | **1.414s*** | |
+| **Avg Cost / Request** | $0.000111 | **$0.000019*** | ~83% cheaper, mostly from caching repeated questions |
+| **Cache Hit Rate** | 0.0% | **66.7%** (sim $> 0.92$) | 2 of 3 repeated questions cost $0.00 |
+| **Quality Gate Status** | Manual / None | **PASSED** (CI threshold: 85%) | |
+
+\* These three "Our System" numbers come from `eval/load_test.py`, which we ran
+*after* `run_eval.py` and `baseline_naive_rag.py` already used up this Google
+account's free-tier quota for the day (see note below) - so part of that load test
+run fell back to offline synthesis instead of real Gemini calls, and those numbers
+undersell the real win from caching (avoiding a ~1-3s real API round trip on a
+cache hit is the actual story, not visible when the fallback kicks in). **Re-run
+`eval/load_test.py` on a day with fresh quota** (or after enabling billing) to get
+a clean number here before your presentation.
+
+**Important note on quota**: this Google account's free tier allows only **20
+Gemini requests/day** across the modern model family (not the ~1500/day some older
+docs mention) - we hit this limit partway through testing. If this happens to you
+too: either wait for the next day's reset, request a quota increase in Google AI
+Studio, or enable pay-as-you-go billing (the project budget note allows $5-$20
+total, and actual spend here was under a cent for the full 43-question benchmark).
+Also add `GEMINI_API_KEY` as a GitHub Actions repo secret so the CI gate
+(`.github/workflows/eval_gate.yml`, already wired to read it) tests real answers
+instead of hitting this same quota wall on every push - the workflow currently
+pulls the key from `secrets.GEMINI_API_KEY`, which needs to be added once in the
+repo's Settings.
+
+We also had to switch the model in `configs/config.yaml` from `gemini-2.0-flash`
+(deprecated by Google) to `gemini-2.5-flash` after discovering the deprecation
+during testing - the newer `gemini-3.8-flash` exists but has an even smaller free
+quota (20/day on its own), so `gemini-2.5-flash` is the better default for a
+budget-constrained student project.
 
 ---
 
@@ -102,10 +131,20 @@ All metrics below were measured and generated using our automated evaluation (`e
    - Bypasses vector retrieval for casual greetings.
    - Rejects out-of-domain queries when retrieval confidence $< 0.35$, preventing hallucinations and saving 100% of generation tokens.
 4. **Automated Quality Regression Gating (CI/CD)**:
-   - Evaluates a hand-written 35-item domain benchmark in GitHub Actions.
-   - Fails the build if Faithfulness drops below $85\%$.
+   - Evaluates a hand-written 43-item domain benchmark in GitHub Actions.
+   - Fails the build if Faithfulness drops below $85\%$ (see note in Section 2 about CI needing an API key secret to actually test this properly).
 5. **Config & Prompt Versioning**:
    - All hyperparameters (similarity thresholds, top-$k$, models, rate limits) are declared in `configs/config.yaml`.
+   - System/analysis prompts live as plain `.txt` files in `prompts/` (not hardcoded in Python) with a changelog in `prompts/CHANGELOG.md`, so prompt wording changes actually show up in `git diff`.
+6. **RAGAS Evaluation (LLM-as-judge)**:
+   - `eval/run_eval.py` is a fast, free, keyword-overlap heuristic that runs on every push in CI.
+   - `eval/ragas_eval.py` is a separate, deeper evaluation using the real [RAGAS](https://github.com/explodinggradients/ragas) library (faithfulness, answer relevancy, context precision) with Gemini Flash as the judge model. This costs real API credits so we run it manually before submission, not on every CI push.
+7. **Guardrails Against Prompt Injection**:
+   - Added 8 adversarial test cases to `data/eval/benchmark.json` (category `adversarial`) that try instruction-override, role-play, and "ignore previous instructions" style attacks.
+   - The system prompt (`prompts/system_prompt.txt`) explicitly tells the model to treat retrieved docs and user questions as untrusted content, not commands.
+8. **Observability / Logged Traces**:
+   - Every query (cache hit, early-exit, intent-routed, or a real generation) is appended as one JSON line to `logs/traces.jsonl` via `src/trace_logger.py` - cost, latency, tokens, cache hit, per request.
+   - The Streamlit UI has a dashboard tab that reads this file back and plots cost/latency over time, so telemetry isn't lost when the session ends.
 
 ---
 
@@ -116,7 +155,11 @@ Doc_Query/
 ├── .github/workflows/
 │   └── eval_gate.yml           # CI/CD: Automated quality regression gate
 ├── configs/
-│   └── config.yaml             # Versioned hyperparameters & prompt configs
+│   └── config.yaml             # Versioned hyperparameters
+├── prompts/
+│   ├── system_prompt.txt       # Versioned system prompt (diffable, not hardcoded)
+│   ├── deep_analysis_prompt.txt
+│   └── CHANGELOG.md            # Why/when prompts changed
 ├── data/
 │   ├── docs/                   # 4 Technical documentation collections
 │   │   ├── fastapi.md
@@ -124,22 +167,29 @@ Doc_Query/
 │   │   ├── git.md
 │   │   └── postgres.md
 │   ├── eval/
-│   │   └── benchmark.json      # 35 hand-crafted domain Q&A test cases
+│   │   └── benchmark.json      # 43 hand-crafted test cases (35 Q&A + 3 unanswerable + 8 adversarial/guardrail)
 │   └── chroma_db/              # Persistent Chroma vector store
 ├── src/
 │   ├── ingest.py               # Header-based chunking & index builder
 │   ├── cache.py                # In-memory vector semantic cache
 │   ├── router.py               # Intent router for casual queries
 │   ├── retrieval.py            # Hybrid BM25 + Chroma retrieval with RRF
-│   ├── engine.py               # Core orchestrator & token cost calculator
+│   ├── engine.py                # Core orchestrator & token cost calculator
+│   ├── trace_logger.py         # Appends per-request traces to logs/traces.jsonl
 │   └── server.py               # FastAPI serving backend with rate limiting
 ├── eval/
-│   ├── run_eval.py             # Domain benchmark runner (Faithfulness/Relevance)
+│   ├── run_eval.py             # Fast CI eval (keyword-overlap Faithfulness/Relevance)
+│   ├── ragas_eval.py           # Deeper RAGAS eval (LLM-as-judge), run manually
+│   ├── baseline_naive_rag.py   # Naive RAG comparison run (no cache/hybrid/early-exit)
 │   ├── load_test.py            # Latency profiling & throughput benchmark
-│   ├── baseline_scores.json    # Evaluator output scores
-│   └── load_test_results.json  # Load test output metrics
+│   ├── baseline_scores.json    # run_eval.py output
+│   ├── baseline_naive_scores.json  # baseline_naive_rag.py output
+│   ├── ragas_scores.json       # ragas_eval.py output (only exists after you run it with an API key)
+│   └── load_test_results.json  # load_test.py output
+├── logs/
+│   └── traces.jsonl            # Per-request observability log (cost/latency/cache hit)
 ├── ui/
-│   └── app.py                  # Streamlit user interface with telemetry sidebar
+│   └── app.py                  # Streamlit UI: search, session history, observability dashboard
 ├── requirements.txt            # Locked project dependencies
 ├── README.md                   # System documentation & performance metrics
 └── REPORT.md                   # Detailed design decisions & trade-off report
@@ -181,12 +231,23 @@ python src/ingest.py
 
 ### 4. Run Automated Evaluation & Load Tests
 ```bash
-# Run 35-item domain benchmark
+# Fast keyword-overlap benchmark (43 cases incl. adversarial/guardrail prompts) - this is what CI runs
 python eval/run_eval.py
 
-# Run latency and throughput load test
+# Naive RAG comparison (no cache/hybrid/early-exit) - produces the baseline numbers in the README table
+python eval/baseline_naive_rag.py
+
+# Latency and throughput load test
 python eval/load_test.py
+
+# Optional, needs GEMINI_API_KEY and extra deps (pip install ragas langchain-google-genai datasets):
+# real RAGAS scoring (faithfulness/answer relevancy/context precision) with Gemini Flash as judge
+python eval/ragas_eval.py
 ```
+
+Re-run all of these with a real `GEMINI_API_KEY` set before your final submission -
+the numbers checked into this repo right now were generated without an API key
+(offline fallback mode), see the note in Section 2.
 
 ### 5. Launch the Streamlit Web Application
 ```bash

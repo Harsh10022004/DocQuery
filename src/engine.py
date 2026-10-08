@@ -6,15 +6,24 @@ from dotenv import load_dotenv
 from src.cache import SemanticCache
 from src.router import check_intent
 from src.retrieval import HybridRetriever
+from src.trace_logger import log_trace
 
 load_dotenv()
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "..", "configs", "config.yaml")
+PROMPTS_DIR = os.path.join(os.path.dirname(__file__), "..", "prompts")
 
 
 def load_config():
     with open(CONFIG_PATH, "r") as f:
         return yaml.safe_load(f)
+
+
+def load_prompt(filename: str) -> str:
+    """Prompts live as plain .txt files in prompts/ so changes show up in git diffs
+    instead of being buried as string literals in the python code."""
+    with open(os.path.join(PROMPTS_DIR, filename), "r", encoding="utf-8") as f:
+        return f.read().strip()
 
 
 class DocuQueryEngine:
@@ -36,6 +45,10 @@ class DocuQueryEngine:
         # LLM setup (gemini or openai if api keys exist)
         self.gemini_key = os.getenv("GEMINI_API_KEY")
         self.openai_key = os.getenv("OPENAI_API_KEY")
+
+        # prompts loaded from prompts/ so they're versioned + diffable in git
+        self.system_prompt = load_prompt("system_prompt.txt")
+        self.deep_analysis_prompt = load_prompt("deep_analysis_prompt.txt")
 
     def _get_embedding(self, text: str):
         """Uses Chroma's underlying embedding function to embed queries for caching."""
@@ -96,18 +109,26 @@ class DocuQueryEngine:
             clean_text = "Here is the verified documentation snippet for your query:\n" + prompt[:400]
         return clean_text, in_tokens, out_tokens
 
-    def query(self, user_query: str, domain_filter: str = "all"):
+    def query(self, user_query: str, domain_filter: str = "all", naive_mode: bool = False):
         """
         Executes the full cost-optimized query pipeline:
         Intent Route -> Cache Check -> Hybrid Retrieval -> Early Exit -> LLM Generation.
+
+        naive_mode=True skips the router/cache/early-exit/RRF entirely and just does a
+        single dense-only lookup with a bigger raw context dump. We use this in
+        eval/baseline_naive_rag.py to get real "before" numbers for the README table
+        instead of just making them up.
         """
         start_time = time.time()
-        
+
+        if naive_mode:
+            return self._query_naive(user_query, start_time)
+
         # 1. Intent routing (small talk check)
         is_casual, reply = check_intent(user_query)
         if is_casual:
             elapsed = time.time() - start_time
-            return {
+            result = {
                 "answer": reply,
                 "citations": [],
                 "cache_hit": False,
@@ -117,6 +138,8 @@ class DocuQueryEngine:
                 "completion_tokens": 0,
                 "cost_usd": 0.0
             }
+            log_trace("intent_routed", user_query, result)
+            return result
 
         # get query embedding for semantic cache
         query_emb = self._get_embedding(user_query)
@@ -125,7 +148,7 @@ class DocuQueryEngine:
         cached_entry, sim_score = self.cache.lookup(query_emb)
         if cached_entry:
             elapsed = time.time() - start_time
-            return {
+            result = {
                 "answer": cached_entry["response"],
                 "citations": cached_entry["citations"],
                 "cache_hit": True,
@@ -135,15 +158,17 @@ class DocuQueryEngine:
                 "completion_tokens": 0,
                 "cost_usd": 0.0
             }
+            log_trace("cache_hit", user_query, result)
+            return result
 
         # 3. Hybrid Retrieval
         chunks, best_sim = self.retriever.retrieve(user_query, domain_filter)
-        
+
         # 4. Early-exit gate if query is completely irrelevant to docs
         min_threshold = self.config["retrieval"]["min_relevance_score"]
         if best_sim < min_threshold or not chunks:
             elapsed = time.time() - start_time
-            return {
+            result = {
                 "answer": "This topic is not covered in the indexed documentation (FastAPI, Docker, Git, PostgreSQL).",
                 "citations": [],
                 "cache_hit": False,
@@ -153,15 +178,10 @@ class DocuQueryEngine:
                 "completion_tokens": 20,
                 "cost_usd": 0.0
             }
+            log_trace("early_exit", user_query, result)
+            return result
 
         # 5. Build compact prompt with static prefix for provider prefix caching
-        system_prompt = (
-            "You are DocuQuery, a technical assistant. "
-            "Answer the question using ONLY the provided documentation chunks. "
-            "If the answer cannot be determined from the context, state that clearly. "
-            "Be concise and output exact code syntax where applicable."
-        )
-
         context_blocks = []
         citations = []
         for c in chunks:
@@ -177,14 +197,49 @@ class DocuQueryEngine:
         prompt_body = f"Context:\n\n" + "\n\n---\n\n".join(context_blocks) + f"\n\nQuestion: {user_query}\nAnswer:"
 
         # 6. LLM Call
-        raw_answer, in_tokens, out_tokens = self._call_llm(prompt_body, system_prompt)
-        
+        raw_answer, in_tokens, out_tokens = self._call_llm(prompt_body, self.system_prompt)
+
         # calculate USD cost
         cost = (in_tokens * self.input_rate) + (out_tokens * self.output_rate)
         elapsed = time.time() - start_time
 
         # 7. Store in Semantic Cache
         self.cache.add(user_query, query_emb, raw_answer, citations)
+
+        result = {
+            "answer": raw_answer,
+            "citations": citations,
+            "cache_hit": False,
+            "latency_seconds": round(elapsed, 4),
+            "prompt_tokens": in_tokens,
+            "completion_tokens": out_tokens,
+            "cost_usd": round(cost, 6)
+        }
+        log_trace("generated", user_query, result)
+        return result
+
+    def _query_naive(self, user_query: str, start_time: float):
+        """Stand-in for a 'naive RAG' baseline: no cache, no hybrid/RRF, no early-exit
+        gate, just dense top-5 chunks dumped straight into the prompt. Used only by
+        eval/baseline_naive_rag.py for the README comparison table."""
+        where_filter = None
+        dense_results = self.retriever.collection.query(query_texts=[user_query], n_results=5, where=where_filter)
+        ids = dense_results["ids"][0] if dense_results["ids"] else []
+        chunks = [self.retriever.chunk_by_id[cid] for cid in ids if cid in self.retriever.chunk_by_id]
+
+        citations = []
+        context_blocks = []
+        for c in chunks:
+            context_blocks.append(f"[{c['title']}]\n{c['text']}")
+            citations.append({
+                "title": c["title"], "url": c["url"], "domain": c["domain"],
+                "excerpt": c["text"], "relevance_score": 0.0
+            })
+
+        prompt_body = "Context:\n\n" + "\n\n---\n\n".join(context_blocks) + f"\n\nQuestion: {user_query}\nAnswer:"
+        raw_answer, in_tokens, out_tokens = self._call_llm(prompt_body, self.system_prompt)
+        cost = (in_tokens * self.input_rate) + (out_tokens * self.output_rate)
+        elapsed = time.time() - start_time
 
         return {
             "answer": raw_answer,
@@ -207,13 +262,8 @@ class DocuQueryEngine:
         context_str = "\n\n".join([f"[{c['title']}]\n{c.get('excerpt', '')}" for c in context_chunks])
         
         if self.gemini_key or self.openai_key:
-            system_prompt = (
-                "You are a Senior Principal Engineer. Provide a concise, high-value technical analysis "
-                "based on the documentation context. Cover: "
-                "1. Architectural Best Practices, 2. Production Pitfalls & Edge Cases, 3. Performance/Security tips."
-            )
             prompt = f"Documentation Context:\n{context_str}\n\nDeveloper Query:\n{query}\n\nEngineering Analysis:"
-            analysis_text, _, _ = self._call_llm(prompt, system_prompt)
+            analysis_text, _, _ = self._call_llm(prompt, self.deep_analysis_prompt)
             return analysis_text
 
         # local offline analysis synthesized from context metadata

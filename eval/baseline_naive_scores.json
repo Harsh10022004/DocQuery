@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-10-08 20:20:16",
+  "mode": "naive_rag_no_cache_no_hybrid",
+  "total_cases": 32,
+  "avg_faithfulness": 0.729,
+  "latency_p50_seconds": 1.328,
+  "latency_p90_seconds": 3.115,
+  "avg_cost_per_request_usd": 0.000111
+}

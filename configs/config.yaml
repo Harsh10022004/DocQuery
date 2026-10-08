@@ -6,7 +6,7 @@ project:
   version: "1.0.0"
 
 models:
-  primary_llm: "gemini-2.0-flash"
+  primary_llm: "gemini-2.5-flash"  # gemini-2.0-flash got deprecated. tried gemini-3.8-flash but free tier only allows 20 requests/day on that one, 2.5-flash has a much bigger free quota
   fallback_llm: "gpt-4o-mini"
   embedding_model: "all-MiniLM-L6-v2"  # local chromadb default, zero API cost for embeddings
   temperature: 0.1

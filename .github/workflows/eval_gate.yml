@@ -30,6 +30,8 @@ jobs:
           python src/ingest.py
 
       - name: Run Domain Benchmark & Quality Evaluation
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           python eval/run_eval.py
 
