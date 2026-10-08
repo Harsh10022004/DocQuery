@@ -122,8 +122,8 @@ test (`eval/load_test.py`).
 
 | Performance Metric | Naive RAG | DocuQuery | Production Significance |
 | :--- | :--- | :--- | :--- |
-| Faithfulness, answerable only (32 cases) | **86.0%** | 83.8% | naive wins here, explained below |
-| Faithfulness, full benchmark (43 cases) | n/a | **88.0%** | naive can't run the abstention cases |
+| Faithfulness, answerable only (32 cases) | **86.0%** | 82.2% | naive wins here, explained below |
+| Faithfulness, full benchmark (43 cases) | n/a | **86.5%** | naive can't run the abstention cases |
 | Avg Relevance | n/a | **93.0%** | answers address what was actually asked |
 | Faithfulness (adversarial) | n/a | **100%** | all 8 injection attempts refused |
 | Faithfulness (unanswerable) | n/a | **100%** | abstains instead of guessing |
@@ -133,14 +133,14 @@ test (`eval/load_test.py`).
 | Cache Hit Rate | 0.0% | **66.7%** | 2 of 3 repeated questions cost nothing |
 | CI Quality Gate | none | **PASSED** (threshold 85%) | regressions get blocked automatically |
 
-Per-category faithfulness (from `eval/baseline_scores.json`): syntax 82.4%, concept
-85.6%, code 86.7%, unanswerable 100%, adversarial 100%. Syntax is the weakest, which
-tracks since those questions hinge on reproducing an exact flag or symbol.
+Per-category faithfulness (from `eval/baseline_scores.json`): syntax 82.2%, concept
+81.1%, code 86.7%, unanswerable 100%, adversarial 100%. Syntax and concept are the
+weakest, which tracks since those questions hinge on reproducing an exact flag or symbol.
 
 ### Why the naive baseline scores higher on faithfulness
 
-On the same 32 answerable questions the baseline gets 86.0% and we get 83.8%. We could
-have put our 43-case average (88.0%) next to its 32-case average and called it a win,
+On the same 32 answerable questions the baseline gets 86.0% and we get 82.2%. We could
+have put our 43-case average (86.5%) next to its 32-case average and called it a win,
 but those aren't the same measurement so the comparison would be dishonest.
 
 The baseline wins because it puts 5 chunks in the prompt where we cap at 3. More context
@@ -154,10 +154,25 @@ The baseline also can't abstain, having no early-exit gate, so it answers out-of
 questions and prompt injections just as confidently as real ones. Those 11 cases aren't
 in its 86.0% because there's no sensible way to score it on them.
 
-So the trade is: capping at 3 chunks costs us about 2 points on a keyword metric and
+So the trade is: capping at 3 chunks costs us about 4 points on a keyword metric and
 buys 7.4x lower P50 latency, 83% lower cost per request, and a system that refuses
 instead of inventing. For a documentation assistant that's the right side of the trade,
 since a confident wrong answer about a CLI flag is worse than "not in the docs".
+
+### Two things the CI gate taught us
+
+The first CI run with a real API key failed at 82.5%, with the adversarial category
+dropping to 75%. That looked like a guardrail regression. It wasn't. Our scorer counted
+a clean refusal ("I'm sorry, but I can't comply with that.") as a failure, because the
+refusal list had "cannot comply" and the model used the contraction, and the fallback
+length check was `> 40` on a string that was exactly 40 characters. The guardrail was
+fine, the measurement was broken. Worth remembering that a failing eval can mean the
+eval is wrong, not the system.
+
+The second thing was variance. At `temperature: 0.1` the benchmark moved about 3 points
+between identical runs, enough to randomly cross an 85% gate. We set temperature to 0,
+which cut the swing to under a point. A gate that fails randomly trains everyone to
+ignore it, so determinism in the eval path matters more than it first looks.
 
 ---
 

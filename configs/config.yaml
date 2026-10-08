@@ -13,7 +13,11 @@ models:
   primary_llm: "openai/gpt-oss-20b"
   fallback_llm: "gpt-4o-mini"
   embedding_model: "all-MiniLM-L6-v2"  # local chromadb default, zero API cost for embeddings
-  temperature: 0.1
+  # 0 rather than 0.1 so the same question gives the same answer. we were seeing the
+  # benchmark swing about 3 points between identical runs at 0.1, which made the CI
+  # gate flaky right around the 85% line. deterministic is also just what you want
+  # from a docs lookup tool
+  temperature: 0.0
   max_output_tokens: 450
 
 retrieval:

@@ -1,13 +1,13 @@
 {
-  "timestamp": "2026-10-08 22:58:30",
+  "timestamp": "2026-10-08 23:41:17",
   "total_cases": 43,
-  "avg_faithfulness": 0.88,
+  "avg_faithfulness": 0.865,
   "avg_relevance": 0.93,
-  "avg_latency_seconds": 1.636,
-  "total_evaluation_cost_usd": 0.004459,
+  "avg_latency_seconds": 2.411,
+  "total_evaluation_cost_usd": 0.004409,
   "category_breakdown": {
-    "syntax": 0.824,
-    "concept": 0.856,
+    "syntax": 0.822,
+    "concept": 0.811,
     "code": 0.867,
     "unanswerable": 1.0,
     "adversarial": 1.0

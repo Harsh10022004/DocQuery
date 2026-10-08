@@ -30,8 +30,8 @@ Measured on `openai/gpt-oss-20b` via Groq.
 
 | Metric | Naive RAG Baseline | DocuQuery | Notes |
 | :--- | :--- | :--- | :--- |
-| Faithfulness, answerable cases only | **86.0%** | 83.8% | naive scores higher here, see below |
-| Faithfulness, all 43 cases | n/a | **88.0%** | naive has no abstention so it can't run the other 11 |
+| Faithfulness, answerable cases only | **86.0%** | 82.2% | naive scores higher here, see below |
+| Faithfulness, all 43 cases | n/a | **86.5%** | naive has no abstention so it can't run the other 11 |
 | Avg Relevance | n/a | **93.0%** | |
 | Faithfulness, adversarial cases | n/a | **100%** | all 8 injection attempts refused |
 | Faithfulness, unanswerable cases | n/a | **100%** | abstains instead of guessing |
@@ -42,12 +42,12 @@ Measured on `openai/gpt-oss-20b` via Groq.
 | Cache Hit Rate | 0.0% | **66.7%** (sim $> 0.92$) | 2 of every 3 repeated questions cost nothing |
 | Quality Gate | none | **PASSED** (threshold 85%) | |
 
-Per-category faithfulness: syntax 82.4%, concept 85.6%, code 86.7%, unanswerable 100%,
+Per-category faithfulness: syntax 82.2%, concept 81.1%, code 86.7%, unanswerable 100%,
 adversarial 100%.
 
-**On the naive baseline beating us on faithfulness.** It scores 86.0% against our 83.8%
+**On the naive baseline beating us on faithfulness.** It scores 86.0% against our 82.2%
 on the same 32 answerable questions, and we're leaving that in rather than quietly
-comparing our 43-case average (88.0%) against its 32-case one, which would look better
+comparing our 43-case average (86.5%) against its 32-case one, which would look better
 but isn't the same measurement.
 
 The reason it wins is that naive mode stuffs 5 chunks into the prompt where we cap at 3.
@@ -59,8 +59,23 @@ keyword metric can be gamed by just pasting in more text.
 What the baseline can't do at all is abstain. It has no early-exit gate, so it answers
 out-of-domain questions and prompt injections with equal confidence, and those 11 cases
 aren't in its 86.0% because it has no sensible way to be scored on them. Against that,
-our 3-chunk cap costs about 2 points on a keyword metric and buys 7.4x lower latency,
+our 3-chunk cap costs about 4 points on a keyword metric and buys 7.4x lower latency,
 83% lower cost, and a system that says "not in the docs" instead of making something up.
+
+### A note on run-to-run variance
+
+We originally ran at `temperature: 0.1` and the benchmark swung about 3 points between
+identical runs, which is a problem when the CI gate sits at 85%. The build would pass or
+fail depending on nothing. We moved to `temperature: 0.0`, which brought the swing under
+1 point. Not perfectly deterministic since the API still varies a little, but stable
+enough that a red build now means something actually changed.
+
+Deterministic output is the right default for a documentation lookup anyway. There's no
+reason the same question about a Docker flag should give differently worded answers.
+
+Current headroom above the gate is about 1.5 points. If it starts flaking, the fix is to
+drop the threshold to ~82% rather than to chase the score, since the point of the gate is
+catching real regressions, not sitting as close to the current number as possible.
 
 ### Why we ended up on Groq
 
