@@ -1,7 +1,10 @@
 fastapi>=0.110.0
 uvicorn>=0.28.0
 streamlit>=1.32.0
-chromadb>=0.4.24
+# pinned: chromadb ships compiled rust bindings and the wheels lag new python
+# releases. streamlit cloud defaulted us to python 3.14 and the bindings failed to
+# load at all (AttributeError on self.bindings). set the app to python 3.11 there.
+chromadb==1.5.9
 rank-bm25>=0.2.2
 groq>=0.11.0
 openai>=1.14.0
