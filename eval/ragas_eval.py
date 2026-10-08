@@ -23,8 +23,11 @@ SUBSET_SIZE = 10  # keep this small, each RAGAS metric = another LLM call per ro
 
 def build_eval_rows(engine, cases):
     rows = []
+    fallback_count = 0
     for item in cases:
         res = engine.query(item["question"])
+        if res.get("offline_fallback"):
+            fallback_count += 1
         contexts = [c["excerpt"] for c in res.get("citations", [])] or [res["answer"]]
         rows.append({
             "question": item["question"],
@@ -32,7 +35,7 @@ def build_eval_rows(engine, cases):
             "contexts": contexts,
             "ground_truth": item["ground_truth"],
         })
-    return rows
+    return rows, fallback_count
 
 
 def main():
@@ -44,6 +47,7 @@ def main():
 
     try:
         from ragas import evaluate
+        from ragas.run_config import RunConfig
         from ragas.metrics import faithfulness, answer_relevancy, context_precision
         from datasets import Dataset
         from langchain_groq import ChatGroq
@@ -76,10 +80,24 @@ def main():
 
     print(f"Running RAGAS on {len(subset)} cases (out of {len(all_cases)} total benchmark items)...")
     engine = DocuQueryEngine()
-    rows = build_eval_rows(engine, subset)
+    rows, fallback_count = build_eval_rows(engine, subset)
+
+    # if the answering model was rate limited, _call_llm quietly drops to offline mode
+    # and the "answer" is just retrieved chunks pasted together. judging that tells us
+    # nothing about the real system, so stop rather than produce a number that looks
+    # like a RAGAS score but isn't one.
+    if fallback_count:
+        print(f"\nABORTING: {fallback_count}/{len(subset)} answers came from the offline")
+        print("fallback, not the model. That usually means the answering model hit its")
+        print("daily token limit. Scoring these would measure the fallback, not DocuQuery.")
+        print("Re-run when quota resets.")
+        return
+
     dataset = Dataset.from_list(rows)
 
-    judge_model = engine.config["models"]["primary_llm"]
+    # judge is a different (bigger) model than the one that generated the answers,
+    # see the note in configs/config.yaml
+    judge_model = engine.config["models"].get("judge_llm", engine.config["models"]["primary_llm"])
     judge_llm = ChatGroq(model=judge_model, api_key=groq_key, temperature=0)
 
     # groq has no embeddings endpoint, so answer_relevancy uses the same local
@@ -91,11 +109,18 @@ def main():
     # answer_relevancy job errored on our first run and the score came out meaningless.
     answer_relevancy.strictness = 1
 
+    # faithfulness breaks each answer into separate claims and checks them one at a
+    # time, so it makes far more judge calls than the other two and was timing out on
+    # the default 180s with only 2 of 10 cases getting a score. longer timeout plus
+    # fewer parallel workers so we're not queueing behind ourselves.
+    run_config = RunConfig(timeout=900, max_workers=2, max_retries=8)
+
     result = evaluate(
         dataset,
         metrics=[faithfulness, answer_relevancy, context_precision],
         llm=judge_llm,
         embeddings=judge_embeddings,
+        run_config=run_config,
     )
 
     df = result.to_pandas()
@@ -120,13 +145,33 @@ def main():
     for k, v in summary.items():
         print(f"  {k}: {v}")
 
+    # a judge call occasionally times out and that row comes back NaN. the thing that
+    # actually burns you is a file that hides how many rows it averaged - our first
+    # version saved faithfulness 1.0 that was really the mean of 2 rows out of 15.
+    # so: coverage always goes in the file, and we refuse to save at all if too much
+    # of the run failed for the average to mean anything.
+    MIN_COVERAGE = 0.9
+    worst = min(valid.values()) / len(subset)
     incomplete = [c for c in cols if valid[c] < len(subset)]
-    if incomplete:
-        print("\nWARNING: these metrics did not score every case, so the averages above")
-        print("are over a partial set and shouldn't be quoted as final:")
+
+    if worst < MIN_COVERAGE:
+        print(f"\nINCOMPLETE RUN - not saving. Lowest coverage {worst:.0%}, need {MIN_COVERAGE:.0%}.")
         for c in incomplete:
             print(f"  {c}: {valid[c]}/{len(subset)} cases scored")
-        print("Usually means the API rate limit was hit. Re-run with fresh quota.")
+        print("Usually a rate limit or judge timeout. Re-run when quota resets.")
+        if os.path.exists(OUTPUT_FILE):
+            os.remove(OUTPUT_FILE)
+            print(f"Removed stale {OUTPUT_FILE}")
+        return
+
+    if incomplete:
+        summary["coverage_complete"] = False
+        print(f"\nNote: saved, but not every case scored (lowest {worst:.0%}).")
+        for c in incomplete:
+            print(f"  {c}: {valid[c]}/{len(subset)} cases scored")
+        print("Quote these as averages over the scored cases, not all of them.")
+    else:
+        summary["coverage_complete"] = True
 
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2)

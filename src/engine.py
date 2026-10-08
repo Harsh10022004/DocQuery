@@ -59,6 +59,7 @@ class DocuQueryEngine:
         return max(1, len(text) // 4)
 
     def _call_llm(self, prompt: str, system_prompt: str):
+        self.used_offline_fallback = False
         """Calls Groq, then OpenAI, then the local extractor if neither key works."""
         if self.groq_key:
             try:
@@ -101,7 +102,10 @@ class DocuQueryEngine:
             except Exception as e:
                 print(f"OpenAI API call failed: {e}")
 
-        # local offline fallback: synthesizes directly from the retrieved context
+        # local offline fallback: synthesizes directly from the retrieved context.
+        # flagged so eval scripts can tell a real model answer from a chunk dump -
+        # scoring fallback text tells you nothing about the actual system
+        self.used_offline_fallback = True
         in_tokens = self._estimate_tokens(prompt + system_prompt)
         out_tokens = 120
         # clean offline answer: display extracted documentation guidance
@@ -213,7 +217,8 @@ class DocuQueryEngine:
             "latency_seconds": round(elapsed, 4),
             "prompt_tokens": in_tokens,
             "completion_tokens": out_tokens,
-            "cost_usd": round(cost, 6)
+            "cost_usd": round(cost, 6),
+            "offline_fallback": self.used_offline_fallback
         }
         log_trace("generated", user_query, result)
         return result

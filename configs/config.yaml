@@ -11,6 +11,10 @@ models:
   # gpt-oss-20b is the small one, picked it over the 120b since answer quality on
   # our benchmark was basically the same when the context is already retrieved
   primary_llm: "openai/gpt-oss-20b"
+  # bigger model, only used by eval/ragas_eval.py as the LLM judge. deliberately not
+  # the same as primary_llm - a model grading its own answers tends to mark itself
+  # generously. also means the judge has its own separate groq daily token budget
+  judge_llm: "openai/gpt-oss-120b"
   fallback_llm: "gpt-4o-mini"
   embedding_model: "all-MiniLM-L6-v2"  # local chromadb default, zero API cost for embeddings
   # 0 rather than 0.1 so the same question gives the same answer. we were seeing the

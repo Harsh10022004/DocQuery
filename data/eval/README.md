@@ -48,13 +48,13 @@ it uses different words. That's the reason for the second scorer.
 
 ### 2. RAGAS - `eval/ragas_eval.py`
 
-Uses the RAGAS library with our Groq model as the judge, scoring faithfulness, answer
+Uses the RAGAS library with `openai/gpt-oss-120b` as the judge, scoring faithfulness, answer
 relevancy and context precision. Groq has no embeddings endpoint, so answer relevancy
 uses the same local MiniLM model the vector store already uses.
 
 Takes longer and fires off several requests per case, so we run this manually before
 submission instead of on every push. Only scores the answerable cases since RAGAS
-metrics assume a grounded answer exists. Defaults to a 15 case subset.
+metrics assume a grounded answer exists. Defaults to a 10 case subset.
 
 Needs `GROQ_API_KEY` and `pip install -r requirements-ragas.txt`. Writes to
 `eval/ragas_scores.json`.

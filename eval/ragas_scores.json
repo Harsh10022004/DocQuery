@@ -1,0 +1,13 @@
+{
+  "cases_attempted": 10,
+  "cases_with_valid_scores": {
+    "faithfulness": 10,
+    "answer_relevancy": 10,
+    "context_precision": 10
+  },
+  "ragas_faithfulness": 0.845,
+  "ragas_answer_relevancy": 0.81,
+  "ragas_context_precision": 0.942,
+  "judge_model": "openai/gpt-oss-120b",
+  "coverage_complete": true
+}

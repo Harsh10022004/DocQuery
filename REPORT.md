@@ -71,7 +71,28 @@ Rather than using generic, synthetic public benchmarks, we authored a domain-spe
 ### 3.2 Evaluation Metrics
 We run two scorers for different purposes (full methodology in `data/eval/README.md`):
 - **Keyword-overlap heuristic** (`eval/run_eval.py`): fast and free, runs in CI on every push. Scores faithfulness and relevance. Abstention and adversarial cases are instead scored on whether the system correctly refused.
-- **RAGAS, LLM-as-judge** (`eval/ragas_eval.py`): faithfulness, answer relevancy and context precision, judged by the same Groq model we serve with. Uses a lot more requests so we run it manually before submission rather than per push.
+- **RAGAS, LLM-as-judge** (`eval/ragas_eval.py`): faithfulness, answer relevancy and context precision. Judged by `openai/gpt-oss-120b`, deliberately not the `gpt-oss-20b` that generates the answers, since a model marking its own work grades generously. Uses a lot more requests so we run it manually before submission rather than per push.
+
+**RAGAS results** (10 answerable cases, all 10 scored on every metric):
+  - Faithfulness: **0.845**
+  - Answer relevancy: **0.810**
+  - Context precision: **0.942**
+
+Context precision is the most informative of the three for us, since it scores the
+hybrid retrieval layer independently of whatever the generator does with the chunks.
+Faithfulness at 0.845 agreeing with the keyword scorer's 82-88% is a useful sanity
+check, because the two methods share no mechanism.
+
+Getting a usable RAGAS run took several attempts and the failures were instructive.
+Early runs looked fine but weren't: a judge timeout returns NaN, pandas skips NaN in
+`mean()`, and the first version happily reported faithfulness 1.0 that was really the
+average of 2 surviving rows out of 15. The script now records per-metric coverage in
+the output file and refuses to save below 90%. The other trap was the answering model
+hitting its daily token cap, at which point `_call_llm` silently falls back to offline
+synthesis, so RAGAS would have been scoring pasted-together chunks rather than model
+output. The engine now flags fallback answers and the eval aborts instead of scoring
+them. The eventual fix for the timeouts was dropping RAGAS from 4 parallel workers to
+2, since faithfulness fans out into many more judge calls than the other metrics.
 
 **Benchmark Results** (43 cases on `openai/gpt-oss-20b`):
   - Average Faithfulness: **88.0%**

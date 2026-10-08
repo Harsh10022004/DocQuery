@@ -45,6 +45,24 @@ Measured on `openai/gpt-oss-20b` via Groq.
 Per-category faithfulness: syntax 82.2%, concept 81.1%, code 86.7%, unanswerable 100%,
 adversarial 100%.
 
+### RAGAS scores
+
+The keyword scorer above is cheap enough to run in CI. RAGAS is the proper one, using
+`openai/gpt-oss-120b` as the judge (deliberately a different, larger model than the
+`gpt-oss-20b` that wrote the answers, so it isn't grading its own work). 10 answerable
+cases, all 10 scored on every metric. From `eval/ragas_scores.json`:
+
+| RAGAS metric | Score | What it measures |
+| :--- | :--- | :--- |
+| Faithfulness | **0.845** | is the answer actually supported by the retrieved chunks |
+| Answer relevancy | **0.810** | does it answer the question that was asked |
+| Context precision | **0.942** | did retrieval surface the right chunks in the first place |
+
+Context precision being the highest is the useful bit, since it scores the hybrid
+retrieval layer on its own rather than the generation. Faithfulness at 0.845 lines up
+with the keyword scorer's 82-88%, which is reassuring given the two methods have
+nothing in common.
+
 **On the naive baseline beating us on faithfulness.** It scores 86.0% against our 82.2%
 on the same 32 answerable questions, and we're leaving that in rather than quietly
 comparing our 43-case average (86.5%) against its 32-case one, which would look better
